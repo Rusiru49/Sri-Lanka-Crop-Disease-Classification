@@ -1,0 +1,81 @@
+# Configuration for Sri Lanka Crop Disease Classification
+
+# Data Configuration
+data:
+  raw_dir: "data/raw/plantvillage"
+  processed_dir: "data/processed"
+  augmented_dir: "data/augmented"
+  image_size: [224, 224]
+  batch_size: 32
+  validation_split: 0.2
+  test_split: 0.1
+  random_seed: 42
+
+# Model Configuration
+model:
+  model_type: "xgboost"  # Options: xgboost, random_forest, ensemble
+  xgboost:
+    n_estimators: 200
+    max_depth: 10
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+  
+  random_forest:
+    n_estimators: 200
+    max_depth: 15
+    min_samples_split: 5
+    min_samples_leaf: 2
+    random_state: 42
+  
+  feature_extraction:
+    method: "cnn"  # Options: cnn, traditional
+    pretrained_model: "MobileNetV2"  # Options: MobileNetV2, ResNet50, VGG16
+    
+# Training Configuration
+training:
+  epochs: 50
+  early_stopping_patience: 10
+  save_best_only: true
+  model_save_path: "models/saved_models"
+  checkpoint_path: "models/checkpoints"
+
+# Augmentation Configuration
+augmentation:
+  enabled: true
+  rotation_range: 20
+  width_shift_range: 0.2
+  height_shift_range: 0.2
+  horizontal_flip: true
+  vertical_flip: false
+  zoom_range: 0.15
+  brightness_range: [0.8, 1.2]
+
+# Feature Engineering
+features:
+  extract_color_features: true
+  extract_texture_features: true
+  extract_shape_features: true
+  use_deep_features: true
+
+# Evaluation Metrics
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+  
+# Logging
+logging:
+  level: "INFO"
+  log_dir: "logs"
+  log_file: "crop_disease_classification.log"
+
+# Streamlit App
+app:
+  title: "Sri Lanka Crop Disease Classification"
+  description: "AI-powered crop disease detection system for Sri Lankan farmers"
+  theme: "light"
+  max_upload_size: 10  # MB
