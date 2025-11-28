@@ -127,10 +127,11 @@ class ImageAugmentor:
         unique_labels, counts = np.unique(labels, return_counts=True)
         
         if target_samples_per_class is None:
-            target_samples_per_class = max(counts)
+            target_samples_per_class = int(max(counts))
         
-        augmented_images = list(images)
-        augmented_labels = list(labels)
+        # Store augmented samples separately
+        augmented_images_list = []
+        augmented_labels_list = []
         
         for label, count in zip(unique_labels, counts):
             if count < target_samples_per_class:
@@ -142,15 +143,26 @@ class ImageAugmentor:
                 needed_samples = target_samples_per_class - count
                 
                 # Randomly sample and augment
+                aug_images_for_class = []
                 for _ in range(needed_samples):
                     idx = np.random.choice(len(class_images))
                     aug_img = self.augment_image(class_images[idx])
-                    augmented_images.append(aug_img)
-                    augmented_labels.append(label)
+                    aug_images_for_class.append(aug_img)
+                    augmented_labels_list.append(label)
                 
+                augmented_images_list.extend(aug_images_for_class)
                 logger.info(f"Augmented class {label}: {count} -> {target_samples_per_class}")
         
-        return np.array(augmented_images), np.array(augmented_labels)
+        # Combine original and augmented data
+        if augmented_images_list:
+            all_images = np.concatenate([images, np.array(augmented_images_list)], axis=0)
+            all_labels = np.concatenate([labels, np.array(augmented_labels_list)], axis=0)
+        else:
+            all_images = images
+            all_labels = labels
+            logger.info("No augmentation needed - all classes already balanced")
+        
+        return all_images, all_labels
     
     def create_synthetic_samples(
         self,
@@ -169,6 +181,10 @@ class ImageAugmentor:
         Returns:
             Original and synthetic samples
         """
+        if len(images) < 2:
+            logger.warning("Not enough images for synthetic sample generation")
+            return images, labels
+        
         synthetic_images = []
         synthetic_labels = []
         
