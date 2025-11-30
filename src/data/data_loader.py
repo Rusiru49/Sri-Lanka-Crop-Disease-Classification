@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from ..utils.config import get_config
 from ..utils.logger import get_logger
-from ..utils.helpers import get_class_names, set_seed
+from ..utils.helpers import get_class_names, get_default_class_names, set_seed
 
 logger = get_logger()
 config = get_config()
@@ -25,28 +25,47 @@ class ImageDataLoader:
         Args:
             data_dir: Path to data directory
         """
-        self.data_dir = data_dir or config.get('data.raw_dir')
-        self.image_size = config.image_size
-        self.random_seed = config.random_seed
+        self.data_dir = data_dir or config.get('data.raw_dir', 'data/raw/plantvillage')
+        self.image_size = config.get('image_size', (224, 224))
+        self.random_seed = config.get('random_seed', 42)
         
         set_seed(self.random_seed)
         
-        # Check if data is pre-split (train/val/test folders exist)
-        self.is_pre_split = self._check_pre_split()
-        
-        if self.is_pre_split:
-            logger.info("Detected pre-split dataset structure (train/val/test)")
-            # Get class names from train folder
-            train_dir = os.path.join(self.data_dir, 'train')
-            self.class_names = get_class_names(train_dir)
+        # Check if data directory exists
+        if not os.path.exists(self.data_dir):
+            logger.warning(f"Data directory not found: {self.data_dir}")
+            logger.info("Using default class names...")
+            self.class_names = get_default_class_names()
+            self.is_pre_split = False
         else:
-            logger.info("Using single directory structure")
-            self.class_names = get_class_names(self.data_dir)
+            # Check if data is pre-split (train/val/test folders exist)
+            self.is_pre_split = self._check_pre_split()
+            
+            if self.is_pre_split:
+                logger.info("Detected pre-split dataset structure (train/val/test)")
+                # Get class names from train folder
+                train_dir = os.path.join(self.data_dir, 'train')
+                try:
+                    self.class_names = get_class_names(train_dir)
+                except Exception as e:
+                    logger.warning(f"Error loading class names from train directory: {str(e)}")
+                    self.class_names = get_default_class_names()
+            else:
+                logger.info("Using single directory structure")
+                try:
+                    self.class_names = get_class_names(self.data_dir)
+                except Exception as e:
+                    logger.warning(f"Error loading class names: {str(e)}")
+                    self.class_names = get_default_class_names()
         
         self.class_to_idx = {name: idx for idx, name in enumerate(self.class_names)}
         self.idx_to_class = {idx: name for name, idx in self.class_to_idx.items()}
         
-        logger.info(f"Found {len(self.class_names)} classes: {self.class_names[:5]}...")
+        logger.info(f"Found {len(self.class_names)} classes")
+        if len(self.class_names) <= 10:
+            logger.info(f"Classes: {self.class_names}")
+        else:
+            logger.info(f"First 5 classes: {self.class_names[:5]}...")
     
     def _check_pre_split(self) -> bool:
         """
@@ -55,6 +74,9 @@ class ImageDataLoader:
         Returns:
             True if pre-split, False otherwise
         """
+        if not os.path.exists(self.data_dir):
+            return False
+        
         train_dir = os.path.join(self.data_dir, 'train')
         val_dir = os.path.join(self.data_dir, 'val')
         test_dir = os.path.join(self.data_dir, 'test')
@@ -73,6 +95,10 @@ class ImageDataLoader:
         Returns:
             Preprocessed image array
         """
+        # Check if file exists
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        
         # Read image
         image = cv2.imread(image_path)
         
@@ -110,33 +136,51 @@ class ImageDataLoader:
             subset_dir = self.data_dir
         
         if not os.path.exists(subset_dir):
+            logger.error(f"Subset directory not found: {subset_dir}")
             raise FileNotFoundError(f"Subset directory not found: {subset_dir}")
         
         logger.info(f"Loading {subset} images from {subset_dir}")
         
+        # Count total images first
+        total_images = 0
         for class_name in self.class_names:
             class_dir = os.path.join(subset_dir, class_name)
-            
-            if not os.path.exists(class_dir):
-                logger.warning(f"Class directory not found: {class_dir}")
-                continue
-            
-            class_idx = self.class_to_idx[class_name]
-            image_files = [f for f in os.listdir(class_dir) 
-                          if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            
-            logger.info(f"Loading {len(image_files)} images for class '{class_name}'")
-            
-            for img_file in tqdm(image_files, desc=f"Loading {class_name}"):
-                img_path = os.path.join(class_dir, img_file)
+            if os.path.exists(class_dir):
+                image_files = [f for f in os.listdir(class_dir) 
+                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                total_images += len(image_files)
+        
+        logger.info(f"Found {total_images} total images in {subset} set")
+        
+        # Load images with progress bar
+        with tqdm(total=total_images, desc=f"Loading {subset}") as pbar:
+            for class_name in self.class_names:
+                class_dir = os.path.join(subset_dir, class_name)
                 
-                try:
-                    image = self.load_image(img_path)
-                    images.append(image)
-                    labels.append(class_idx)
-                    image_paths.append(img_path)
-                except Exception as e:
-                    logger.warning(f"Error loading {img_path}: {str(e)}")
+                if not os.path.exists(class_dir):
+                    logger.warning(f"Class directory not found: {class_dir}")
+                    continue
+                
+                class_idx = self.class_to_idx[class_name]
+                image_files = [f for f in os.listdir(class_dir) 
+                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                
+                for img_file in image_files:
+                    img_path = os.path.join(class_dir, img_file)
+                    
+                    try:
+                        image = self.load_image(img_path)
+                        images.append(image)
+                        labels.append(class_idx)
+                        image_paths.append(img_path)
+                    except Exception as e:
+                        logger.warning(f"Error loading {img_path}: {str(e)}")
+                    
+                    pbar.update(1)
+        
+        if len(images) == 0:
+            logger.error(f"No images loaded for {subset} set!")
+            raise ValueError(f"No images found in {subset_dir}")
         
         images = np.array(images)
         labels = np.array(labels)
@@ -153,6 +197,7 @@ class ImageDataLoader:
             Dictionary with train, val, test splits
         """
         if not self.is_pre_split:
+            logger.error("Dataset is not pre-split. Use load_dataset() and split_dataset() instead.")
             raise ValueError("Dataset is not pre-split. Use load_dataset() and split_dataset() instead.")
         
         logger.info("\n" + "="*80)
@@ -161,15 +206,27 @@ class ImageDataLoader:
         
         # Load train set
         logger.info("\n[1/3] Loading Training Set...")
-        X_train, y_train, train_paths = self.load_subset('train')
+        try:
+            X_train, y_train, train_paths = self.load_subset('train')
+        except Exception as e:
+            logger.error(f"Failed to load training set: {str(e)}")
+            raise
         
         # Load validation set
         logger.info("\n[2/3] Loading Validation Set...")
-        X_val, y_val, val_paths = self.load_subset('val')
+        try:
+            X_val, y_val, val_paths = self.load_subset('val')
+        except Exception as e:
+            logger.error(f"Failed to load validation set: {str(e)}")
+            raise
         
         # Load test set
         logger.info("\n[3/3] Loading Test Set...")
-        X_test, y_test, test_paths = self.load_subset('test')
+        try:
+            X_test, y_test, test_paths = self.load_subset('test')
+        except Exception as e:
+            logger.error(f"Failed to load test set: {str(e)}")
+            raise
         
         logger.info("\n" + "="*80)
         logger.info("Dataset Loading Summary")
@@ -183,7 +240,10 @@ class ImageDataLoader:
         return {
             'train': (X_train, y_train),
             'val': (X_val, y_val),
-            'test': (X_test, y_test)
+            'test': (X_test, y_test),
+            'train_paths': train_paths,
+            'val_paths': val_paths,
+            'test_paths': test_paths
         }
     
     def load_dataset(self, subset: str = None) -> Tuple[np.ndarray, np.ndarray, List[str]]:
@@ -207,31 +267,52 @@ class ImageDataLoader:
         if subset and not self.is_pre_split:
             data_path = os.path.join(data_path, subset)
         
+        if not os.path.exists(data_path):
+            logger.error(f"Data path not found: {data_path}")
+            raise FileNotFoundError(f"Data path not found: {data_path}")
+        
         logger.info(f"Loading images from {data_path}")
         
+        # Count total images
+        total_images = 0
         for class_name in self.class_names:
             class_dir = os.path.join(data_path, class_name)
-            
-            if not os.path.exists(class_dir):
-                logger.warning(f"Class directory not found: {class_dir}")
-                continue
-            
-            class_idx = self.class_to_idx[class_name]
-            image_files = [f for f in os.listdir(class_dir) 
-                          if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            
-            logger.info(f"Loading {len(image_files)} images for class '{class_name}'")
-            
-            for img_file in tqdm(image_files, desc=f"Loading {class_name}"):
-                img_path = os.path.join(class_dir, img_file)
+            if os.path.exists(class_dir):
+                image_files = [f for f in os.listdir(class_dir) 
+                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                total_images += len(image_files)
+        
+        logger.info(f"Found {total_images} total images")
+        
+        # Load images with progress bar
+        with tqdm(total=total_images, desc="Loading images") as pbar:
+            for class_name in self.class_names:
+                class_dir = os.path.join(data_path, class_name)
                 
-                try:
-                    image = self.load_image(img_path)
-                    images.append(image)
-                    labels.append(class_idx)
-                    image_paths.append(img_path)
-                except Exception as e:
-                    logger.warning(f"Error loading {img_path}: {str(e)}")
+                if not os.path.exists(class_dir):
+                    logger.warning(f"Class directory not found: {class_dir}")
+                    continue
+                
+                class_idx = self.class_to_idx[class_name]
+                image_files = [f for f in os.listdir(class_dir) 
+                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                
+                for img_file in image_files:
+                    img_path = os.path.join(class_dir, img_file)
+                    
+                    try:
+                        image = self.load_image(img_path)
+                        images.append(image)
+                        labels.append(class_idx)
+                        image_paths.append(img_path)
+                    except Exception as e:
+                        logger.warning(f"Error loading {img_path}: {str(e)}")
+                    
+                    pbar.update(1)
+        
+        if len(images) == 0:
+            logger.error("No images loaded!")
+            raise ValueError(f"No images found in {data_path}")
         
         images = np.array(images)
         labels = np.array(labels)
@@ -257,6 +338,32 @@ class ImageDataLoader:
         }
         return distribution
     
+    def print_class_distribution(self, labels: np.ndarray, title: str = "Class Distribution"):
+        """
+        Print class distribution in a formatted way.
+        
+        Args:
+            labels: Label array
+            title: Title for the distribution
+        """
+        distribution = self.get_class_distribution(labels)
+        total = sum(distribution.values())
+        
+        print("\n" + "="*80)
+        print(title)
+        print("="*80)
+        
+        for class_name in sorted(distribution.keys()):
+            count = distribution[class_name]
+            percentage = (count / total) * 100 if total > 0 else 0
+            bar_length = int(percentage / 2)  # Scale to 50 chars max
+            bar = "█" * bar_length
+            print(f"{class_name:35s} | {count:6d} ({percentage:5.2f}%) {bar}")
+        
+        print("="*80)
+        print(f"Total samples: {total}")
+        print("="*80 + "\n")
+    
     def get_dataset_info(self) -> Dict[str, any]:
         """
         Get comprehensive dataset information.
@@ -266,22 +373,80 @@ class ImageDataLoader:
         """
         info = {
             'data_dir': self.data_dir,
+            'data_dir_exists': os.path.exists(self.data_dir),
             'is_pre_split': self.is_pre_split,
             'n_classes': len(self.class_names),
             'class_names': self.class_names,
             'image_size': self.image_size
         }
         
-        if self.is_pre_split:
+        if self.is_pre_split and os.path.exists(self.data_dir):
             # Count images in each split
             for subset in ['train', 'val', 'test']:
                 subset_dir = os.path.join(self.data_dir, subset)
                 count = 0
-                for class_name in self.class_names:
-                    class_dir = os.path.join(subset_dir, class_name)
-                    if os.path.exists(class_dir):
-                        count += len([f for f in os.listdir(class_dir) 
-                                    if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+                if os.path.exists(subset_dir):
+                    for class_name in self.class_names:
+                        class_dir = os.path.join(subset_dir, class_name)
+                        if os.path.exists(class_dir):
+                            try:
+                                count += len([f for f in os.listdir(class_dir) 
+                                            if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
+                            except Exception as e:
+                                logger.warning(f"Error counting images in {class_dir}: {str(e)}")
                 info[f'{subset}_size'] = count
         
         return info
+    
+    def validate_dataset(self) -> bool:
+        """
+        Validate that the dataset is properly set up.
+        
+        Returns:
+            True if valid, False otherwise
+        """
+        logger.info("Validating dataset...")
+        
+        # Check if data directory exists
+        if not os.path.exists(self.data_dir):
+            logger.warning(f"Data directory does not exist: {self.data_dir}")
+            logger.info("Will use default class names for predictions")
+            return False
+        
+        # Check if pre-split
+        if self.is_pre_split:
+            splits = ['train', 'val', 'test']
+            for split in splits:
+                split_dir = os.path.join(self.data_dir, split)
+                if not os.path.exists(split_dir):
+                    logger.error(f"Split directory missing: {split_dir}")
+                    return False
+                
+                # Check if classes exist
+                found_classes = 0
+                for class_name in self.class_names:
+                    class_dir = os.path.join(split_dir, class_name)
+                    if os.path.exists(class_dir):
+                        found_classes += 1
+                
+                if found_classes == 0:
+                    logger.error(f"No class directories found in {split_dir}")
+                    return False
+                
+                logger.info(f"Found {found_classes}/{len(self.class_names)} classes in {split}")
+        else:
+            # Check if classes exist in main directory
+            found_classes = 0
+            for class_name in self.class_names:
+                class_dir = os.path.join(self.data_dir, class_name)
+                if os.path.exists(class_dir):
+                    found_classes += 1
+            
+            if found_classes == 0:
+                logger.error(f"No class directories found in {self.data_dir}")
+                return False
+            
+            logger.info(f"Found {found_classes}/{len(self.class_names)} classes")
+        
+        logger.info("✓ Dataset validation passed")
+        return True
