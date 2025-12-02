@@ -45,6 +45,9 @@ training:
 augmentation:
   enabled: true
   rotation_range: 20
+  target_classes:
+    - "Tomato_Early_blight"
+  augmentation_multiplier: 3
   width_shift_range: 0.2
   height_shift_range: 0.2
   horizontal_flip: true
@@ -58,6 +61,7 @@ features:
   extract_texture_features: true
   extract_shape_features: true
   use_deep_features: true
+  extract_plant_features: true
 
 # Evaluation Metrics
 evaluation:
