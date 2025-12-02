@@ -546,20 +546,34 @@ def main():
             st.info("Plots download feature coming soon!")
     
     # Footer with tips
-    st.markdown("---")
+    st.markdown("---")  
     with st.expander("💡 Tips for Improving Model Performance"):
         st.markdown("""
-        **To improve accuracy:**
-        1. Collect more training data, especially for poorly performing classes
-        2. Use data augmentation (rotation, flip, brightness, etc.)
-        3. Try different model architectures or ensembles
-        4. Tune hyperparameters using grid search or random search
-        5. Analyze misclassified samples to understand patterns
-        6. Consider using transfer learning with larger pre-trained models
-        7. Balance the dataset if classes are heavily imbalanced
-        8. Add more relevant features or use better feature extraction
-        """)
+        Here are some best practices to improve your model:
 
+        ### 🔄 Data Improvements
+        - Add more images, especially for underrepresented classes
+        - Ensure images are clean and not duplicates
+        - Use data augmentation (rotation, zoom, flips) to improve robustness
+
+        ### ⚙️ Model Improvements
+        - Train deeper or more efficient CNNs (EfficientNet, ResNet50, MobileNetV3)
+        - Fine-tune the last few layers instead of full transfer learning
+        - Experiment with different optimizers (AdamW, SGD with momentum)
+
+        ### 🧪 Training Process
+        - Increase epochs gradually (watch validation loss to avoid overfitting)
+        - Use callbacks: EarlyStopping, ReduceLROnPlateau
+        - Try different batch sizes (16, 32, 64)
+
+        ### 🌳 Ensemble Models
+        - Combine CNN features + tree-based models (RandomForest, XGBoost, LightGBM)
+        - Average predictions from multiple models
+
+        ### 🏗️ Evaluation
+        - Check misclassified samples to see confusing classes
+        - Improve class labels if two diseases look visually similar
+        """)
 
 if __name__ == "__main__":
     main()

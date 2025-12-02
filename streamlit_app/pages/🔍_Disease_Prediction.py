@@ -149,7 +149,7 @@ if 'prediction_result' not in st.session_state:
 def load_predictor():
     """Load the trained model and predictor."""
     try:
-        model_path = Path(__file__).resolve().parents[2] / "models/saved_models/random_forest_model.pkl"
+        model_path = Path(__file__).resolve().parents[2] / "models/saved_models/lightgbm_model.pkl"
         
         if not os.path.exists(model_path):
             st.warning("⚠️ Model not found. Please train the model first.")
@@ -374,6 +374,10 @@ def main():
                 # Make prediction
                 result = st.session_state.predictor.predict_with_recommendations(image_path)
                 st.session_state.prediction_result = result
+
+            # DEBUG: Show raw output
+            st.write("📌 DEBUG: Prediction Raw Output")
+            st.json(result)
             
             # Display results
             display_prediction_result(result, image)
